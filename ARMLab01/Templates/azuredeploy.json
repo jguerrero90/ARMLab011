@@ -1,0 +1,181 @@
+﻿{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "st01Type": {
+            "type": "string",
+            "defaultValue": "Standard_LRS",
+            "allowedValues": [
+                "Standard_LRS",
+                "Standard_ZRS",
+                "Standard_GRS",
+                "Standard_RAGRS",
+                "Premium_LRS"
+            ]
+        },
+        "VM01Name": {
+            "type": "string",
+            "minLength": 1
+        },
+        "VM01AdminUserName": {
+            "type": "string",
+            "minLength": 1
+        },
+        "VM01AdminPassword": {
+            "type": "securestring"
+        },
+        "VM01WindowsOSVersion": {
+            "type": "string",
+            "defaultValue": "2012-R2-Datacenter",
+            "allowedValues": [
+                "2008-R2-SP1",
+                "2012-Datacenter",
+                "2012-R2-Datacenter",
+                "Windows-Server-Technical-Preview"
+            ]
+        }
+    },
+    "variables": {
+        "st01Name": "[concat('st01', uniqueString(resourceGroup().id))]",
+        "VNETAZPrefix": "10.0.0.0/16",
+        "VNETAZSubnet1Name": "Servers",
+        "VNETAZSubnet1Prefix": "10.0.0.0/24",
+        "VNETAZSubnet2Name": "DMZ",
+        "VNETAZSubnet2Prefix": "10.0.1.0/24",
+        "VM01ImagePublisher": "MicrosoftWindowsServer",
+        "VM01ImageOffer": "WindowsServer",
+        "VM01OSDiskName": "VM01OSDisk",
+        "VM01VmSize": "Standard_D1",
+        "VM01VnetID": "[resourceId('Microsoft.Network/virtualNetworks', 'VNETAZ')]",
+        "VM01SubnetRef": "[concat(variables('VM01VnetID'), '/subnets/', variables('VNETAZSubnet1Name'))]",
+        "VM01StorageAccountContainerName": "vhds",
+        "VM01NicName": "[concat(parameters('VM01Name'), 'NetworkInterface')]"
+    },
+    "resources": [
+        {
+            "name": "[variables('st01Name')]",
+            "type": "Microsoft.Storage/storageAccounts",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [ ],
+            "tags": {
+                "displayName": "st01"
+            },
+            "properties": {
+                "accountType": "[parameters('st01Type')]"
+            }
+        },
+        {
+            "name": "VNETAZ",
+            "type": "Microsoft.Network/virtualNetworks",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [ ],
+            "tags": {
+                "displayName": "VNETAZ"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('VNETAZPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('VNETAZSubnet1Name')]",
+                        "properties": {
+                            "addressPrefix": "[variables('VNETAZSubnet1Prefix')]"
+                        }
+                    },
+                    {
+                        "name": "[variables('VNETAZSubnet2Name')]",
+                        "properties": {
+                            "addressPrefix": "[variables('VNETAZSubnet2Prefix')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('VM01NicName')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', 'VNETAZ')]"
+            ],
+            "tags": {
+                "displayName": "VM01Nic"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('VM01SubnetRef')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[parameters('VM01Name')]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-06-15",
+            "dependsOn": [
+                "[concat('Microsoft.Storage/storageAccounts/', variables('st01Name'))]",
+                "[concat('Microsoft.Network/networkInterfaces/', variables('VM01NicName'))]"
+            ],
+            "tags": {
+                "displayName": "VM01"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[variables('VM01VmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[parameters('VM01Name')]",
+                    "adminUsername": "[parameters('VM01AdminUsername')]",
+                    "adminPassword": "[parameters('VM01AdminPassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "[variables('VM01ImagePublisher')]",
+                        "offer": "[variables('VM01ImageOffer')]",
+                        "sku": "[parameters('VM01WindowsOSVersion')]",
+                        "version": "latest"
+                    },
+                  "osDisk": {
+                    "name": "VM01OSDisk",
+                    "vhd": {
+                      "uri": "[concat('http://', variables('st01Name'), '.blob.core.windows.net/', variables('VM01StorageAccountContainerName'), '/', variables('VM01OSDiskName'), '.vhd')]"
+                    },
+                    "caching": "ReadWrite",
+                    "createOption": "FromImage"
+                  },
+                  "dataDisks": [
+                    {
+                      "lun": 0,
+                      "createOption": "Empty",
+                      "name": "datadisk1",
+                      "vhd": { "uri": "[concat('http://', variables('st01Name'), '.blob.core.windows.net/', variables('VM01StorageAccountContainerName'), '/', 'datadisk0101', '.vhd')]" },"caching":"ReadWrite","diskSizeGB": "120"
+                    }
+                  ]
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('VM01NicName'))]"
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "outputs": {
+    }
+}
